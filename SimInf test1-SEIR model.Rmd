@@ -1,0 +1,68 @@
+---
+title: "SimInf test1 - SEIR model"
+author: "Yanchao"
+date: "2023-08-02"
+output: html_document
+---
+
+### Load the library
+```{r setup, include=FALSE}
+library("SimInf")
+
+```
+
+### Model framework
+Here we can define the compartments (different health status), as well as the transitions (the function describe the flow). To begin with, we build a simple SEIR model for 100 nodes (farms), without events.
+
+```{r, compartments and transitions}
+compartments <- c("S", "E", "I", "R")
+
+transitions <- c("S -> alpha*S -> E",
+                 "E -> beta*E*I/(S+E+I+R) -> I",
+                 "I -> gamma*I -> R")
+
+```
+
+### Input settings
+Here we can set the u0 values and time length (how many days in total)
+
+```{r, model setting}
+
+n <- 100
+u0 <- data.frame(S = rep(99, n), E= rep(0, n), I = rep(5, n), R = rep(0, n))
+
+#u0 <- data.frame(S = rep(99, n), E= rep(0, n), I = sample(1:5, size = n, replace = TRUE), R = rep(0, n))
+
+tspan = 1:150
+head(u0)
+
+```
+
+### The model 
+```{r, model frame}
+model <- mparse(transitions = transitions,
+                compartments = compartments,
+                gdata = c(alpha= 0.2, beta = 0.16, gamma = 0.077),
+                u0 = u0,
+                tspan = tspan)
+
+```
+
+
+### Overview of the model output
+```{r, plot}
+
+model
+
+result <- run(model)
+
+result
+plot(result)
+
+head(trajectory(result))
+tail(trajectory(result))
+plot(prevalence(result, I ~ S + E + I + R))
+
+```
+
+

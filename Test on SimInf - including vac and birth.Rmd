@@ -1,0 +1,129 @@
+---
+title: "Test on SimInf - including vaccination and birth/death"
+author: "Yanchao"
+date: "2023-08-11"
+output: html_document
+---
+
+### Load the library
+```{r setup, include=FALSE}
+library("SimInf")
+
+```
+
+
+### Model framework
+Here we can include different health status as well as the vaccination as compartments in the model. When individuals are vaccinated, they enter the compartment "V" and stay there. Please don't take this model literally, it is only for testing purpose. My plan is to first see the possibilities, figure out what we can do with "SimInf", so that our model is not limited because of "technical" issues.
+
+```{r, compartments and transitions}
+compartments <- c("S", "E", "I1", "I2", "R", "V")
+
+transitions <- c(#"@ -> birth -> S", 
+                 "@ -> S > 100 ? 0 : birth*(S+E+I1+I2+R) -> S", # add a condition
+                 "S -> beta*S*I1/(S+E+I1+I2+R) -> E",
+                 "E -> alpha*E -> I1", 
+                 "I1 -> lamba*I1 -> I2",
+                 "I1 -> death*I1 -> @", # assume some infected pigs will die
+                 "I2 -> gamma*I2 -> R", 
+                 "R -> omega*R-> S")
+
+```
+
+### Prepare the input data
+u0 includes the health status at time 0. Here we can just adapt the test data from the package.
+```{r, set up the u0}
+u0 <- u0_SIR()
+u0$I1 <- 0
+u0$I2 <- 0
+u0$V <- 0
+names(u0) <- c("S", "E", "I1", "I2", "R", "V")
+head(u0)
+
+```
+
+### Prepare the events data
+similar to the u0 data, we can adapt the test data from the package. We can include vaccination as events in the model, more detailed information is documented by the authors' paper. Events include: "exit"     "enter"    "extTrans" and "intTrans". "enter" and "exit" are relatively simple, we can see them as birth and death, the "dest" field is 0, within farm. "extTrans" (external transfer) is for between farm event, e.g. n animals transfered from farm A to farm B;  and  "intTrans" (internal transfer) is for within farm.
+```{r, events}
+events <- events_SEIR()
+#events <- events_SISe3()
+#events <- events_SIR()
+head(events)
+tail(events)
+unique(events$select)
+unique(events$shift)
+unique(events$event)
+#events$select[events$select == 2] <- 3
+#head(events)
+
+vaccination <- data.frame(event = "intTrans", time = rep(21:52,
+               each = 50), node = 1:1600, dest = 0, n = 0, proportion = 0.4,
+               select = 3, shift = 1)
+
+head(vaccination)
+events <- rbind(events, vaccination)
+
+test <- events[which(events$event == "extTrans" ),]
+summary(test)
+unique(events$event)
+unique(events$select)
+summary(events)
+
+
+
+```
+### The E matrix and the N matrix
+The E matrix is the select matrix, i.e. draw individuals from which compartments. For the E matrix below, when select = 2, it means individuals from SEI1I2 will be drawn.  
+```{r, matrice}
+### the E matrix has n columns, correspond to the "select" field from the events. 
+E <- matrix(c(1, 1, 1, 
+              1, 1, 1, 
+              1, 1, 1, 
+              1, 1, 1, 
+              1, 0, 1, 
+              1, 0, 0), 
+            nrow = 6, 
+            ncol = 3, 
+            dimnames = list(c("S", "E", "I1", "I2", "R", "V"),c("1", "2", "3")))
+
+### as far as I understand, the N matrix tells us the transition of the health status to the vaccinated compartment within the farm (node). For instance, S -> V is 5 steps, E -> V is 4 steps, and V -> V is 0 (stays as it is). Once the individuals are vaccinated, they stay in the V compartment, i.e. no immunity loss
+N <- matrix(c(5,
+              4, 
+              3, 
+              2, 
+              1, 
+              0), 
+            nrow = 6, 
+            ncol = 1,
+            dimnames = list(c("S", "E", "I1", "I2", "R", "V"), "1"))
+
+
+```
+
+
+### The model 
+Here we can assemble the model together. The gdata here is just for testing purpose, please don't take it seriously.
+```{r, model frame}
+model <- mparse(transitions = transitions,
+                compartments = compartments,
+                gdata = c(birth = 0.05, alpha= 0.25, beta = 0.4, gamma = 0.33, lamba = 0.2, omega = 0.25, death = 0.01),
+                u0 = u0,
+                events = events,
+                E = E,
+                N = N,
+                tspan = 1:150)
+```
+
+### Test and plot
+We can plot the results to have a general idea of the model.
+```{r, test}
+
+result <- run(model)
+result
+
+plot(result)
+
+traj <- trajectory(result)
+summary(traj)
+tail(traj)
+
+```
